@@ -1,2 +1,5 @@
 streamlit
-openai
+numpy
+opencv-python-headless
+scipy
+ezdxf
