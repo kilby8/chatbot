@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Site2CAD Mobile Preview</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --muted: #94a3b8;
+      --text: #e5e7eb;
+      --brand: #22d3ee;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --border: #1f2937;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: linear-gradient(180deg, #0b1220, #0f172a);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 14px;
+    }
+    .card {
+      background: rgba(17, 24, 39, 0.9);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    h1 { margin: 0 0 6px; font-size: 1.35rem; }
+    h2 { margin: 0 0 10px; font-size: 1.05rem; }
+    p, li, label, td, th { font-size: 0.92rem; }
+    .muted { color: var(--muted); }
+    .grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(1, minmax(0, 1fr));
+    }
+    @media (min-width: 760px) {
+      .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    .metric {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+      background: #0b1323;
+    }
+    .metric .value {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-top: 3px;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .row > label { flex: 1; }
+    .row > input[type="range"], .row > select, .row > input[type="number"] { flex: 1; }
+    input, select, button {
+      background: #0b1323;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    button {
+      cursor: pointer;
+      border-color: #155e75;
+    }
+    .primary {
+      background: #083344;
+      border-color: #0891b2;
+      color: #ecfeff;
+      width: 100%;
+      font-weight: 600;
+      margin-top: 8px;
+    }
+    .pill {
+      display: inline-block;
+      border: 1px solid #164e63;
+      border-radius: 999px;
+      padding: 4px 8px;
+      color: #a5f3fc;
+      font-size: 0.75rem;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+    .notice {
+      border-left: 4px solid var(--warn);
+      background: #1f2937;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+    }
+    .ok {
+      border-left-color: var(--ok);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 7px 6px;
+      text-align: left;
+    }
+    canvas {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #020617;
+    }
+    .thumbs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .thumbs img {
+      width: 100%;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .exports button { width: 100%; }
+    .footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.82rem;
+      margin: 14px 0 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>📐 Site2CAD – Mobile Preview</h1>
+      <p class="muted">Interactive front-end preview you can open directly on your mobile browser.</p>
+      <span class="pill">No install</span>
+      <span class="pill">Single HTML file</span>
+      <span class="pill">UI simulation</span>
+    </div>
+
+    <div class="card">
+      <h2>Capture Guide</h2>
+      <ul class="muted">
+        <li>Capture 6–30 photos with 60–80% overlap.</li>
+        <li>Walk in sequence around the area.</li>
+        <li>Avoid blur and big lighting changes.</li>
+      </ul>
+    </div>
+
+    <div class="grid two">
+      <div class="card">
+        <h2>Upload Site Photos</h2>
+        <input id="photos" type="file" accept="image/*" multiple />
+        <p id="photoCount" class="muted">No photos selected yet.</p>
+        <div id="thumbs" class="thumbs"></div>
+      </div>
+
+      <div class="card">
+        <h2>Reconstruction Settings</h2>
+        <div class="row">
+          <label for="feature">Feature detector</label>
+          <select id="feature">
+            <option>SIFT</option>
+            <option>ORB</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="matchRatio">Match ratio: <span id="matchRatioVal">0.75</span></label>
+          <input id="matchRatio" type="range" min="0.50" max="0.95" step="0.01" value="0.75" />
+        </div>
+        <div class="row">
+          <label for="minMatches">Min matches</label>
+          <input id="minMatches" type="number" min="20" max="500" value="40" />
+        </div>
+        <div class="row">
+          <label for="baseline">Camera step (m): <span id="baselineVal">1.0</span></label>
+          <input id="baseline" type="range" min="0.1" max="5.0" step="0.1" value="1.0" />
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Post-processing / CAD</h2>
+      <div class="grid two">
+        <label><input id="align" type="checkbox" checked /> Align model to ground axis (PCA)</label>
+        <label><input id="outliers" type="checkbox" checked /> Remove outlier points</label>
+      </div>
+      <div class="row">
+        <label for="trim">Trim percentile: <span id="trimVal">1.0</span>%</label>
+        <input id="trim" type="range" min="0.0" max="5.0" step="0.1" value="1.0" />
+      </div>
+      <div class="row">
+        <label for="knownDim">Known dimension (m)</label>
+        <input id="knownDim" type="number" min="0.0" max="10000" step="0.1" value="0.0" />
+      </div>
+      <button id="runBtn" class="primary">Run Site2CAD Preview</button>
+      <p id="runStatus" class="muted">Waiting to run.</p>
+    </div>
+
+    <div class="grid three">
+      <div class="metric"><div>Uploaded photos</div><div id="mPhotos" class="value">0</div></div>
+      <div class="metric"><div>Reconstructed points</div><div id="mPoints" class="value">0</div></div>
+      <div class="metric"><div>Generated mesh faces</div><div id="mFaces" class="value">0</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Pair-by-pair reconstruction report</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Pair</th>
+            <th>Good matches</th>
+            <th>Inliers</th>
+            <th>Points</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="pairBody">
+          <tr><td colspan="5" class="muted">Run preview to generate report.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Point cloud projections</h2>
+      <div class="grid three">
+        <div>
+          <p class="muted">XY</p>
+          <canvas id="cxy" width="260" height="220"></canvas>
+        </div>
+        <div>
+          <p class="muted">XZ</p>
+          <canvas id="cxz" width="260" height="220"></canvas>
+        </div>
+        <div>
+          <p class="muted">YZ</p>
+          <canvas id="cyz" width="260" height="220"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="card exports">
+      <h2>Export (demo files)</h2>
+      <div class="grid four">
+        <button data-name="site_model.ply">Download PLY</button>
+        <button data-name="site_model.obj">Download OBJ</button>
+        <button data-name="site_model.dxf">Download DXF</button>
+        <button data-name="site_floorplan.dxf">Download DXF floorplan</button>
+      </div>
+      <p class="muted">These are preview/demo downloads in this mobile HTML version.</p>
+    </div>
+
+    <div class="card notice">
+      This preview demonstrates the product flow and look/feel. Your full Streamlit app performs the actual reconstruction pipeline.
+    </div>
+
+    <p class="footer">Site2CAD mobile preview • single-file HTML</p>
+  </div>
+
+  <script>
+    const photosInput = document.getElementById("photos");
+    const photoCount = document.getElementById("photoCount");
+    const thumbs = document.getElementById("thumbs");
+    const runBtn = document.getElementById("runBtn");
+    const runStatus = document.getElementById("runStatus");
+    const pairBody = document.getElementById("pairBody");
+
+    const mPhotos = document.getElementById("mPhotos");
+    const mPoints = document.getElementById("mPoints");
+    const mFaces = document.getElementById("mFaces");
+
+    const matchRatio = document.getElementById("matchRatio");
+    const matchRatioVal = document.getElementById("matchRatioVal");
+    const baseline = document.getElementById("baseline");
+    const baselineVal = document.getElementById("baselineVal");
+    const trim = document.getElementById("trim");
+    const trimVal = document.getElementById("trimVal");
+
+    matchRatio.addEventListener("input", () => matchRatioVal.textContent = matchRatio.value);
+    baseline.addEventListener("input", () => baselineVal.textContent = baseline.value);
+    trim.addEventListener("input", () => trimVal.textContent = trim.value);
+
+    photosInput.addEventListener("change", () => {
+      const files = Array.from(photosInput.files || []);
+      mPhotos.textContent = String(files.length);
+      photoCount.textContent = files.length
+        ? `${files.length} photo(s) selected.`
+        : "No photos selected yet.";
+
+      thumbs.innerHTML = "";
+      files.slice(0, 6).forEach(file => {
+        const img = document.createElement("img");
+        img.alt = file.name;
+        img.src = URL.createObjectURL(file);
+        thumbs.appendChild(img);
+      });
+    });
+
+    function drawRandomPoints(canvasId, count) {
+      const c = document.getElementById(canvasId);
+      const ctx = c.getContext("2d");
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.fillStyle = "#020617";
+      ctx.fillRect(0, 0, c.width, c.height);
+      for (let i = 0; i < count; i++) {
+        const x = Math.random() * c.width;
+        const y = Math.random() * c.height;
+        const alpha = 0.35 + Math.random() * 0.65;
+        ctx.fillStyle = `rgba(34, 211, 238, ${alpha.toFixed(2)})`;
+        ctx.fillRect(x, y, 2, 2);
+      }
+    }
+
+    runBtn.addEventListener("click", async () => {
+      const files = Array.from(photosInput.files || []);
+      if (files.length < 2) {
+        runStatus.textContent = "Upload at least 2 photos to run preview.";
+        return;
+      }
+
+      runBtn.disabled = true;
+      runStatus.textContent = "Running preview reconstruction...";
+      await new Promise(r => setTimeout(r, 900));
+
+      const points = Math.max(500, files.length * 950 + Math.floor(Math.random() * 800));
+      const faces = Math.floor(points * (0.55 + Math.random() * 0.2));
+
+      mPoints.textContent = points.toLocaleString();
+      mFaces.textContent = faces.toLocaleString();
+
+      pairBody.innerHTML = "";
+      for (let i = 0; i < files.length - 1; i++) {
+        const good = 80 + Math.floor(Math.random() * 220);
+        const inliers = Math.floor(good * (0.6 + Math.random() * 0.3));
+        const tri = Math.floor(inliers * (0.7 + Math.random() * 0.25));
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${i}-${i + 1}</td>
+          <td>${good}</td>
+          <td>${inliers}</td>
+          <td>${tri}</td>
+          <td>OK</td>
+        `;
+        pairBody.appendChild(tr);
+      }
+
+      drawRandomPoints("cxy", Math.min(4500, points));
+      drawRandomPoints("cxz", Math.min(4500, points));
+      drawRandomPoints("cyz", Math.min(4500, points));
+
+      runStatus.textContent = "Preview complete. You can inspect outputs below.";
+      runBtn.disabled = false;
+    });
+
+    document.querySelectorAll(".exports button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const name = btn.getAttribute("data-name");
+        const content = `# Demo export from Site2CAD mobile preview\nfile=${name}\n`;
+        const blob = new Blob([content], { type: "text/plain" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      });
+    });
+  </script>
+</body>
+</html>
