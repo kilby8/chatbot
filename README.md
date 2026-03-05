@@ -1,19 +1,36 @@
-# 💬 Chatbot template
+# :speech_balloon: Chat App
 
-A simple Streamlit app that shows how to build a chatbot using OpenAI's GPT-3.5.
+A configurable Streamlit chat app powered by OpenAI models.
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://chatbot-template.streamlit.app/)
+## Features
 
-### How to run it on your own machine
+- Chat interface with persistent session history
+- Model selector (gpt-4o-mini, gpt-4.1-mini, gpt-4.1)
+- Temperature control
+- Editable system prompt
+- Clear chat history button
+- Download chat history as JSON
 
-1. Install the requirements
+## Run locally
 
+1. Install dependencies:
+
+   ```bash
+   pip install -r requirements.txt
    ```
-   $ pip install -r requirements.txt
+
+2. Start the app:
+
+   ```bash
+   streamlit run streamlit_app.py
    ```
 
-2. Run the app
+3. In the app sidebar, provide your OpenAI API key.
 
-   ```
-   $ streamlit run streamlit_app.py
-   ```
+### Optional: use Streamlit secrets
+
+Create `.streamlit/secrets.toml`:
+
+```toml
+OPENAI_API_KEY = "your-api-key-here"
+```
