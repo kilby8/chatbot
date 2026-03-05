@@ -39,6 +39,34 @@ class ReconstructionResult:
     warnings: list[str] = field(default_factory=list)
 
 
+@dataclass
+class PostProcessSettings:
+    align_to_ground: bool = True
+    remove_outliers: bool = True
+    outlier_std_limit: float = 2.8
+    trim_percentile: float = 1.0
+    target_dimension_m: float = 0.0
+    target_axis: str = "longest"
+
+
+@dataclass
+class PostProcessReport:
+    points_input: int
+    points_after_outlier: int
+    points_after_trim: int
+    scale_factor: float
+    bbox_before_xyz: tuple[float, float, float]
+    bbox_after_xyz: tuple[float, float, float]
+
+
+@dataclass
+class PostProcessResult:
+    points: np.ndarray
+    colors: np.ndarray
+    report: PostProcessReport
+    warnings: list[str] = field(default_factory=list)
+
+
 def decode_uploaded_images(uploaded_files: Iterable) -> tuple[list[np.ndarray], list[str]]:
     images: list[np.ndarray] = []
     names: list[str] = []
@@ -85,7 +113,7 @@ def _match_keypoints(
 
     matcher = cv2.BFMatcher(norm_type, crossCheck=False)
     matches = matcher.knnMatch(descriptors_a, descriptors_b, k=2)
-    good_matches = [m for m, n in matches if m.distance < match_ratio * n.distance]
+    good_matches = [m for pair in matches if len(pair) == 2 for m, n in [pair] if m.distance < match_ratio * n.distance]
 
     pts_a = np.float64([keypoints_a[m.queryIdx].pt for m in good_matches])
     pts_b = np.float64([keypoints_b[m.trainIdx].pt for m in good_matches])
@@ -317,3 +345,135 @@ def mesh_to_dxf_bytes(points: np.ndarray, faces: np.ndarray) -> bytes:
         path = Path(tmp_dir) / "site_model.dxf"
         doc.saveas(path)
         return path.read_bytes()
+
+
+def points_to_floorplan_dxf_bytes(points: np.ndarray, ground_percentile: float = 35.0) -> bytes:
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    if len(points) == 0:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "site_floorplan.dxf"
+            doc.saveas(path)
+            return path.read_bytes()
+
+    z_threshold = np.percentile(points[:, 2], ground_percentile)
+    near_ground = points[points[:, 2] <= z_threshold]
+    source = near_ground if len(near_ground) >= 3 else points
+    xy = source[:, :2]
+
+    if len(xy) >= 3:
+        try:
+            hull = ConvexHull(xy)
+            vertices = xy[hull.vertices]
+            polyline_points = [(float(p[0]), float(p[1])) for p in vertices]
+            msp.add_lwpolyline(polyline_points, close=True)
+        except Exception:
+            for p in xy:
+                msp.add_point((float(p[0]), float(p[1]), 0.0))
+    else:
+        for p in xy:
+            msp.add_point((float(p[0]), float(p[1]), 0.0))
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir) / "site_floorplan.dxf"
+        doc.saveas(path)
+        return path.read_bytes()
+
+
+def _bbox_extents(points: np.ndarray) -> tuple[float, float, float]:
+    if len(points) == 0:
+        return 0.0, 0.0, 0.0
+    mins = points.min(axis=0)
+    maxs = points.max(axis=0)
+    extents = maxs - mins
+    return float(extents[0]), float(extents[1]), float(extents[2])
+
+
+def _axis_dimension(extents: tuple[float, float, float], axis: str) -> float:
+    lookup = {"x": extents[0], "y": extents[1], "z": extents[2], "longest": max(extents)}
+    return float(lookup.get(axis, max(extents)))
+
+
+def _align_to_ground(points: np.ndarray) -> np.ndarray:
+    if len(points) < 3:
+        return points
+    centered = points - points.mean(axis=0, keepdims=True)
+    covariance = np.cov(centered, rowvar=False)
+    eigenvalues, eigenvectors = np.linalg.eigh(covariance)
+    order = np.argsort(eigenvalues)[::-1]
+    basis = eigenvectors[:, order]
+    if np.linalg.det(basis) < 0:
+        basis[:, 2] *= -1.0
+    return centered @ basis
+
+
+def postprocess_point_cloud(
+    points: np.ndarray,
+    colors: np.ndarray,
+    settings: PostProcessSettings,
+) -> PostProcessResult:
+    warnings: list[str] = []
+    if len(points) == 0:
+        report = PostProcessReport(
+            points_input=0,
+            points_after_outlier=0,
+            points_after_trim=0,
+            scale_factor=1.0,
+            bbox_before_xyz=(0.0, 0.0, 0.0),
+            bbox_after_xyz=(0.0, 0.0, 0.0),
+        )
+        return PostProcessResult(points=points, colors=colors, report=report, warnings=warnings)
+
+    processed_points = points.astype(np.float32).copy()
+    processed_colors = colors.copy()
+    bbox_before = _bbox_extents(processed_points)
+    points_after_outlier = len(processed_points)
+    points_after_trim = len(processed_points)
+
+    if settings.align_to_ground:
+        processed_points = _align_to_ground(processed_points).astype(np.float32)
+
+    if settings.remove_outliers and len(processed_points) > 10:
+        mean = processed_points.mean(axis=0)
+        std = processed_points.std(axis=0)
+        std[std < 1e-8] = 1.0
+        zscores = np.abs((processed_points - mean) / std)
+        mask = np.all(zscores <= settings.outlier_std_limit, axis=1)
+        processed_points = processed_points[mask]
+        processed_colors = processed_colors[mask]
+        points_after_outlier = len(processed_points)
+
+    if settings.trim_percentile > 0 and len(processed_points) > 10:
+        p = float(settings.trim_percentile)
+        lower = np.percentile(processed_points, p, axis=0)
+        upper = np.percentile(processed_points, 100 - p, axis=0)
+        mask = np.all((processed_points >= lower) & (processed_points <= upper), axis=1)
+        processed_points = processed_points[mask]
+        processed_colors = processed_colors[mask]
+        points_after_trim = len(processed_points)
+
+    scale_factor = 1.0
+    if settings.target_dimension_m > 0 and len(processed_points) > 0:
+        current_extents = _bbox_extents(processed_points)
+        current_dimension = _axis_dimension(current_extents, settings.target_axis.lower())
+        if current_dimension > 1e-8:
+            scale_factor = settings.target_dimension_m / current_dimension
+            processed_points *= scale_factor
+        else:
+            warnings.append("Could not apply scale target because current model dimension is near zero.")
+
+    bbox_after = _bbox_extents(processed_points)
+    report = PostProcessReport(
+        points_input=len(points),
+        points_after_outlier=points_after_outlier,
+        points_after_trim=points_after_trim,
+        scale_factor=float(scale_factor),
+        bbox_before_xyz=bbox_before,
+        bbox_after_xyz=bbox_after,
+    )
+    return PostProcessResult(
+        points=processed_points,
+        colors=processed_colors,
+        report=report,
+        warnings=warnings,
+    )
