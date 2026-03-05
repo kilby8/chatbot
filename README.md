@@ -66,6 +66,44 @@ If you are deploying this app on an Ubuntu/Debian host and want SSH access:
 
    Then open `http://localhost:8501`.
 
+## Run Site2CAD as a systemd service (auto-start on boot)
+
+From the project directory on your server:
+
+```bash
+sudo APP_DIR=/workspace APP_USER=ubuntu ./scripts/setup_site2cad_service.sh
+```
+
+Use a different `APP_DIR` if you cloned this repo elsewhere.
+
+Service management:
+
+```bash
+sudo systemctl status site2cad --no-pager
+sudo systemctl restart site2cad
+sudo journalctl -u site2cad -f
+```
+
+## Accessing from Cursor software
+
+If you are connected to this machine in Cursor:
+
+1. Make sure the service is running:
+
+   ```bash
+   sudo systemctl status site2cad --no-pager
+   ```
+
+2. In Cursor, open the **Ports** panel and forward port **8501**.
+3. Open the forwarded port URL from Cursor.
+4. If your Cursor session does not expose ports directly, use SSH tunnel fallback:
+
+   ```bash
+   ssh -L 8501:localhost:8501 ubuntu@<SERVER_PUBLIC_IP>
+   ```
+
+   Then open `http://localhost:8501` on your laptop browser.
+
 ## Capture tips for better results
 
 - Use 6-30 photos with 60-80% overlap.
