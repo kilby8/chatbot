@@ -1,0 +1,19 @@
+# Web Scraping
+requests==2.31.0
+beautifulsoup4==4.12.3
+lxml==5.2.1
+fake-useragent==1.5.1
+tqdm==4.66.4
+selenium==4.21.0
+webdriver-manager==4.0.1
+
+# Data & Database
+pandas==2.2.2
+SQLAlchemy==2.0.30
+
+# Utilities
+python-dotenv==1.0.1
+
+# Optional — Streamlit Dashboard
+# streamlit==1.35.0
+# plotly==5.22.0
