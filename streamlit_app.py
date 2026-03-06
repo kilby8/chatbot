@@ -1,56 +1,111 @@
+from __future__ import annotations
+
+import re
+
+import pandas as pd
 import streamlit as st
-from openai import OpenAI
+from streamlit.errors import StreamlitSecretNotFoundError
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import SQLAlchemyError
 
-# Show title and description.
-st.title("💬 Chatbot")
-st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-    "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
+st.set_page_config(page_title="SQL Database UI", page_icon="🗄️", layout="wide")
+
+
+@st.cache_resource(show_spinner=False)
+def get_engine(connection_url: str):
+    return create_engine(connection_url, future=True)
+
+
+def list_tables(connection_url: str) -> list[str]:
+    inspector = inspect(get_engine(connection_url))
+    return inspector.get_table_names()
+
+
+def run_query(connection_url: str, query: str) -> tuple[pd.DataFrame | None, str]:
+    with get_engine(connection_url).connect() as connection:
+        result = connection.execute(text(query))
+        if result.returns_rows:
+            rows = result.fetchall()
+            frame = pd.DataFrame(rows, columns=result.keys())
+            return frame, f"Returned {len(frame)} row(s)."
+        connection.commit()
+        return None, f"Query executed successfully. {result.rowcount} row(s) affected."
+
+
+def is_read_only_query(query: str) -> bool:
+    normalized = re.sub(r"/\*.*?\*/", "", query, flags=re.S)
+    normalized = re.sub(r"--.*?$", "", normalized, flags=re.M).strip().lower()
+    return normalized.startswith("select") or normalized.startswith("with")
+
+
+st.title("🗄️ SQL Database UI")
+st.caption("Connect to your SQL database, browse tables, and run queries from one place.")
+
+try:
+    default_url = st.secrets["DATABASE_URL"]
+except (StreamlitSecretNotFoundError, KeyError, FileNotFoundError):
+    default_url = "sqlite:///example.db"
+connection_url = st.sidebar.text_input(
+    "SQLAlchemy connection URL",
+    value=default_url,
+    help="Examples: sqlite:///example.db, mysql+pymysql://user:pass@host/dbname",
 )
+max_preview_rows = st.sidebar.slider("Preview rows", min_value=5, max_value=200, value=25)
+read_only_mode = st.sidebar.checkbox("Read-only mode (allow SELECT/WITH only)", value=True)
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
+if not connection_url.strip():
+    st.info("Add a connection URL in the sidebar to begin.")
+    st.stop()
+
+try:
+    tables = list_tables(connection_url)
+except SQLAlchemyError as error:
+    st.error(f"Could not connect to database: {error}")
+    st.stop()
+
+st.success("Connected")
+st.subheader("Table browser")
+
+if tables:
+    table_name = st.selectbox("Choose a table", options=tables)
+    preview_query = f'SELECT * FROM "{table_name}" LIMIT {max_preview_rows}'
+    try:
+        table_preview, message = run_query(connection_url, preview_query)
+    except SQLAlchemyError as error:
+        st.error(f"Could not preview table `{table_name}`: {error}")
+    else:
+        st.write(message)
+        st.dataframe(table_preview, width="stretch", hide_index=True)
 else:
+    st.info("No tables found in this database.")
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
+st.divider()
+st.subheader("SQL runner")
 
-    # Create a session state variable to store the chat messages. This ensures that the
-    # messages persist across reruns.
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+default_sql = (
+    "SELECT name FROM sqlite_master WHERE type='table';"
+    if connection_url.startswith("sqlite")
+    else "SELECT 1;"
+)
+query = st.text_area("SQL query", value=default_sql, height=160)
 
-    # Display the existing chat messages via `st.chat_message`.
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    # Create a chat input field to allow the user to enter a message. This will display
-    # automatically at the bottom of the page.
-    if prompt := st.chat_input("What is up?"):
-
-        # Store and display the current prompt.
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        # Generate a response using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
-            stream=True,
-        )
-
-        # Stream the response to the chat using `st.write_stream`, then store it in 
-        # session state.
-        with st.chat_message("assistant"):
-            response = st.write_stream(stream)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+if st.button("Run query", type="primary"):
+    if not query.strip():
+        st.warning("Enter a SQL query first.")
+    elif read_only_mode and not is_read_only_query(query):
+        st.error("Read-only mode is enabled. Run only SELECT or WITH queries.")
+    else:
+        try:
+            data, message = run_query(connection_url, query)
+        except SQLAlchemyError as error:
+            st.error(f"Query failed: {error}")
+        else:
+            st.success(message)
+            if data is not None:
+                st.dataframe(data, width="stretch", hide_index=True)
+                st.download_button(
+                    "Download results as CSV",
+                    data=data.to_csv(index=False).encode("utf-8"),
+                    file_name="query_results.csv",
+                    mime="text/csv",
+                )
