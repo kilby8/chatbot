@@ -1,6 +1,8 @@
-# 💬 Chatbot template
+# 💬 Chatbot Studio
 
-A simple Streamlit app that shows how to build a chatbot using OpenAI's GPT-3.5.
+A Streamlit chatbot app with two modes:
+- **Demo mode** (no API key required) for local prompt testing
+- **OpenAI mode** with model, temperature, and system prompt controls
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://chatbot-template.streamlit.app/)
 
@@ -17,3 +19,9 @@ A simple Streamlit app that shows how to build a chatbot using OpenAI's GPT-3.5.
    ```
    $ streamlit run streamlit_app.py
    ```
+
+### Features
+
+- Sidebar settings for mode, model, temperature, and system prompt
+- Chat history reset button
+- Export conversation as JSON

@@ -1,56 +1,117 @@
+import json
+
 import streamlit as st
 from openai import OpenAI
 
-# Show title and description.
-st.title("💬 Chatbot")
+
+st.set_page_config(page_title="Chatbot Studio", page_icon="💬")
+
+
+def stream_demo_response(prompt: str, system_prompt: str):
+    prompt_line = f"You said: {prompt}"
+    system_line = (
+        f"System prompt in use: {system_prompt.strip()}"
+        if system_prompt.strip()
+        else "No system prompt set."
+    )
+    text = (
+        "Demo mode is active, so this reply is generated locally without calling OpenAI. "
+        f"{system_line} "
+        f"{prompt_line}"
+    )
+    for token in text.split():
+        yield token + " "
+
+
+def build_model_messages(system_prompt: str):
+    messages = []
+    if system_prompt.strip():
+        messages.append({"role": "system", "content": system_prompt.strip()})
+    messages.extend(
+        {"role": message["role"], "content": message["content"]}
+        for message in st.session_state.messages
+    )
+    return messages
+
+
+def clear_chat():
+    st.session_state.messages = []
+
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+st.title("💬 Chatbot Studio")
 st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-    "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
+    "Build and test prompts quickly with local demo mode or OpenAI mode. "
+    "Use the sidebar to configure model settings, reset chat history, and export conversation JSON."
 )
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
-else:
+with st.sidebar:
+    st.header("Settings")
+    mode = st.radio("Mode", options=["Demo (no API key)", "OpenAI"])
+    model = st.selectbox("Model", ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1"])
+    temperature = st.slider("Temperature", min_value=0.0, max_value=1.0, value=0.7, step=0.1)
+    system_prompt = st.text_area(
+        "System prompt",
+        value="",
+        placeholder="You are a helpful assistant.",
+    )
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
+    openai_api_key = ""
+    if mode == "OpenAI":
+        openai_api_key = st.text_input("OpenAI API Key", type="password")
+        if not openai_api_key:
+            st.info("Add an OpenAI API key to send messages in OpenAI mode.", icon="🗝️")
 
-    # Create a session state variable to store the chat messages. This ensures that the
-    # messages persist across reruns.
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    st.divider()
+    if st.button("Clear chat", use_container_width=True):
+        clear_chat()
+        st.success("Chat history cleared.")
 
-    # Display the existing chat messages via `st.chat_message`.
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    st.download_button(
+        label="Export chat as JSON",
+        data=json.dumps(st.session_state.messages, indent=2),
+        file_name="chat_history.json",
+        mime="application/json",
+        use_container_width=True,
+    )
 
-    # Create a chat input field to allow the user to enter a message. This will display
-    # automatically at the bottom of the page.
-    if prompt := st.chat_input("What is up?"):
+if not st.session_state.messages:
+    st.session_state.messages.append(
+        {
+            "role": "assistant",
+            "content": (
+                "Hello! Use Demo mode to try the app instantly, or switch to OpenAI mode and add an API key."
+            ),
+        }
+    )
 
-        # Store and display the current prompt.
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-        # Generate a response using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
-            stream=True,
-        )
+chat_disabled = mode == "OpenAI" and not openai_api_key
+if prompt := st.chat_input("Send a message", disabled=chat_disabled):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
 
-        # Stream the response to the chat using `st.write_stream`, then store it in 
-        # session state.
-        with st.chat_message("assistant"):
-            response = st.write_stream(stream)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+    with st.chat_message("assistant"):
+        if mode == "Demo (no API key)":
+            response = st.write_stream(stream_demo_response(prompt, system_prompt))
+        else:
+            try:
+                client = OpenAI(api_key=openai_api_key)
+                stream = client.chat.completions.create(
+                    model=model,
+                    messages=build_model_messages(system_prompt),
+                    temperature=temperature,
+                    stream=True,
+                )
+                response = st.write_stream(stream)
+            except Exception as error:
+                response = f"OpenAI request failed: {error}"
+                st.error(response)
+
+    st.session_state.messages.append({"role": "assistant", "content": response})
