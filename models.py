@@ -122,9 +122,8 @@ class Model(
         dtype = next(self.parameters()).dtype
         device = next(self.parameters()).device
 
-        with device:
-            self.backbone.setup_caches(max_batch_size, dtype)
-            self.decoder.setup_caches(max_batch_size, dtype, decoder_max_seq_len=self.config.audio_num_codebooks)
+        self.backbone.setup_caches(max_batch_size, dtype)
+        self.decoder.setup_caches(max_batch_size, dtype, decoder_max_seq_len=self.config.audio_num_codebooks)
 
         self.register_buffer("backbone_causal_mask", _create_causal_mask(self.backbone.max_seq_len, device))
         self.register_buffer("decoder_causal_mask", _create_causal_mask(self.config.audio_num_codebooks, device))

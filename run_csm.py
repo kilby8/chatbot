@@ -1,6 +1,7 @@
 import os
 import torch
 import torchaudio
+import soundfile as sf
 from huggingface_hub import hf_hub_download
 from generator import load_csm_1b, Segment
 from dataclasses import dataclass
@@ -44,11 +45,15 @@ SPEAKER_PROMPTS = {
 }
 
 def load_prompt_audio(audio_path: str, target_sample_rate: int) -> torch.Tensor:
-    audio_tensor, sample_rate = torchaudio.load(audio_path)
-    audio_tensor = audio_tensor.squeeze(0)
-    # Resample is lazy so we can always call it
+    try:
+        audio_tensor, sample_rate = torchaudio.load(audio_path)
+    except Exception:
+        audio_np, sample_rate = sf.read(audio_path, always_2d=True)
+        audio_tensor = torch.from_numpy(audio_np.T).float()
+
+    audio_tensor = audio_tensor.mean(dim=0)
     audio_tensor = torchaudio.functional.resample(
-        audio_tensor, orig_freq=sample_rate, new_freq=target_sample_rate
+        audio_tensor, orig_freq=int(sample_rate), new_freq=target_sample_rate
     )
     return audio_tensor
 
@@ -102,16 +107,22 @@ def main():
             context=prompt_segments + generated_segments,
             max_audio_length_ms=10_000,
         )
+        if audio_tensor.numel() == 0:
+            print("Skipping empty generation segment")
+            continue
         generated_segments.append(Segment(text=utterance['text'], speaker=utterance['speaker_id'], audio=audio_tensor))
+
+    if not generated_segments:
+        raise RuntimeError("No audio was generated.")
 
     # Concatenate all generations
     all_audio = torch.cat([seg.audio for seg in generated_segments], dim=0)
-    torchaudio.save(
+    sf.write(
         "full_conversation.wav",
-        all_audio.unsqueeze(0).cpu(),
-        generator.sample_rate
+        all_audio.cpu().numpy(),
+        generator.sample_rate,
     )
     print("Successfully generated full_conversation.wav")
 
 if __name__ == "__main__":
-    main() 
+    main()

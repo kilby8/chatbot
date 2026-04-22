@@ -1,8 +1,10 @@
 import argparse
+import os
 
 import silentcipher
 import torch
 import torchaudio
+from huggingface_hub import snapshot_download
 
 # This watermark key is public, it is not secure.
 # If using CSM 1B in another application, use a new private key and keep it secret.
@@ -18,11 +20,30 @@ def cli_check_audio() -> None:
 
 
 def load_watermarker(device: str = "cuda") -> silentcipher.server.Model:
-    model = silentcipher.get_model(
-        model_type="44.1k",
-        device=device,
-    )
-    return model
+    try:
+        model = silentcipher.get_model(
+            model_type="44.1k",
+            device=device,
+        )
+        return model
+    except OSError as e:
+        if "WinError 1314" not in str(e):
+            raise
+
+        local_dir = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "silentcipher_nosymlink")
+        folder_dir = snapshot_download(
+            repo_id="sony/silentcipher",
+            local_dir=local_dir,
+            local_dir_use_symlinks=False,
+        )
+        ckpt_path = os.path.join(folder_dir, "44_1_khz", "73999_iteration")
+        config_path = os.path.join(folder_dir, "44_1_khz", "73999_iteration", "hparams.yaml")
+        return silentcipher.get_model(
+            model_type="44.1k",
+            ckpt_path=ckpt_path,
+            config_path=config_path,
+            device=device,
+        )
 
 
 @torch.inference_mode()
@@ -60,7 +81,8 @@ def verify(
 
 
 def check_audio_from_file(audio_path: str) -> None:
-    watermarker = load_watermarker(device="cuda")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    watermarker = load_watermarker(device=device)
 
     audio_array, sample_rate = load_audio(audio_path)
     is_watermarked = verify(watermarker, audio_array, sample_rate, CSM_1B_GH_WATERMARK)

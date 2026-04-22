@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Tuple
+import os
 
 import torch
 import torchaudio
@@ -23,10 +24,32 @@ def load_llama3_tokenizer():
     """
     https://github.com/huggingface/transformers/issues/22794#issuecomment-2092623992
     """
-    tokenizer_name = "meta-llama/Llama-3.2-1B"
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
-    bos = tokenizer.bos_token
-    eos = tokenizer.eos_token
+    preferred = os.environ.get("CSM_TOKENIZER_NAME", "sesame/csm-1b")
+    tokenizer_candidates = [
+        preferred,
+        "hf-internal-testing/llama-tokenizer",
+    ]
+
+    tokenizer = None
+    for tokenizer_name in tokenizer_candidates:
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+            break
+        except Exception:
+            continue
+
+    if tokenizer is None:
+        raise RuntimeError(
+            "Unable to load a tokenizer. Set CSM_TOKENIZER_NAME to an accessible tokenizer repo."
+        )
+
+    bos = tokenizer.bos_token or "<s>"
+    eos = tokenizer.eos_token or "</s>"
+    if tokenizer.bos_token_id is None:
+        tokenizer.add_special_tokens({"bos_token": bos})
+    if tokenizer.eos_token_id is None:
+        tokenizer.add_special_tokens({"eos_token": eos})
+
     tokenizer._tokenizer.post_processor = TemplateProcessing(
         single=f"{bos}:0 $A:0 {eos}:0",
         pair=f"{bos}:0 $A:0 {eos}:0 {bos}:1 $B:1 {eos}:1",
@@ -156,6 +179,9 @@ class Generator:
             ).unsqueeze(1)
             curr_pos = curr_pos[:, -1:] + 1
 
+        if not samples:
+            return torch.zeros(0, device=self.device)
+
         audio = self._audio_tokenizer.decode(torch.stack(samples).permute(1, 2, 0)).squeeze(0).squeeze(0)
 
         # This applies an imperceptible watermark to identify audio as AI-generated.
@@ -170,7 +196,8 @@ class Generator:
 
 def load_csm_1b(device: str = "cuda") -> Generator:
     model = Model.from_pretrained("sesame/csm-1b")
-    model.to(device=device, dtype=torch.bfloat16)
+    dtype = torch.bfloat16 if device != "cpu" else torch.float32
+    model.to(device=device, dtype=dtype)
 
     generator = Generator(model)
     return generator
