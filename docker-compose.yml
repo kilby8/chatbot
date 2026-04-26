@@ -1,0 +1,87 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: chatbot-ollama
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.ollama-api
+    container_name: chatbot-api
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      CORS_ALLOW_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 10s
+
+  web:
+    image: nginx:alpine
+    container_name: chatbot-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - ./website:/usr/share/nginx/html:ro
+    ports:
+      - "127.0.0.1:8080:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    container_name: chatbot-whisper
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:9000"
+    volumes:
+      - whisper_cache:/root/.cache
+    environment:
+      ASR_MODEL: base
+      ASR_ENGINE: faster_whisper
+
+  piper:
+    image: rhasspy/wyoming-piper:latest
+    container_name: chatbot-piper
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5001:10200"
+    volumes:
+      - piper_cache:/data
+    command: --voice en_US-lessac-medium
+
+volumes:
+  ollama_data:
+  whisper_cache:
+  piper_cache:

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Local Forge Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,500;12..96,700&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="noise"></div>
+    <main class="page">
+      <header class="hero card reveal">
+        <p class="eyebrow">Local AI</p>
+        <h1>Local Forge Chat</h1>
+        <p class="lead">
+          Run your chatbot fully local with Ollama. Pick a local model, send prompts, and keep your
+          conversation on your own machine.
+        </p>
+        <div class="status-row" aria-live="polite">
+          <span id="api-pill" class="pill unknown">API: checking...</span>
+          <span id="models-pill" class="pill unknown">Models: -</span>
+        </div>
+      </header>
+
+      <section class="grid">
+        <form id="chat-form" class="card reveal delay-1">
+          <div class="field">
+            <label for="api-url">API Base URL</label>
+            <input id="api-url" type="url" value="http://localhost:8000" required />
+          </div>
+
+          <div class="field">
+            <label for="api-key">API Key (optional)</label>
+            <input id="api-key" type="password" placeholder="Used as X-API-Key header" />
+          </div>
+
+          <div class="two-col">
+            <div class="field">
+              <label for="model">Model</label>
+              <input id="model" type="text" value="llama3.1:8b" list="model-list" required />
+              <datalist id="model-list"></datalist>
+            </div>
+            <div class="field">
+              <label for="temperature">Temperature</label>
+              <input id="temperature" type="number" min="0" max="2" step="0.1" value="0.7" />
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div class="field">
+              <label for="max-tokens">Max Tokens</label>
+              <input id="max-tokens" type="number" min="1" max="4096" step="1" value="512" />
+            </div>
+            <div class="field">
+              <label for="system">System Prompt</label>
+              <input id="system" type="text" value="You are a concise and helpful assistant." />
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div class="field">
+              <label for="request-timeout">Request Timeout (seconds)</label>
+              <input id="request-timeout" type="number" min="5" max="600" step="1" value="90" />
+            </div>
+            <div class="field">
+              <label for="retries">Retries</label>
+              <input id="retries" type="number" min="0" max="5" step="1" value="1" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="text">Your Message</label>
+            <textarea id="text" rows="6" placeholder="Ask anything..." required></textarea>
+          </div>
+
+          <button id="send-btn" type="submit" class="btn">Send</button>
+          <p id="status" class="status">Idle</p>
+        </form>
+
+        <section class="card reveal delay-2" aria-live="polite">
+          <h2>Conversation</h2>
+          <div id="chat-log" class="chat-log" aria-live="polite">
+            <article class="bubble assistant">Ready. Send your first message.</article>
+          </div>
+          <button id="clear-btn" class="btn ghost" type="button">Clear Chat</button>
+        </section>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -5,7 +5,7 @@ import os
 import torch
 import torchaudio
 from huggingface_hub import hf_hub_download
-from models import Model
+from models import Model, ModelArgs
 from moshi.models import loaders
 from tokenizers.processors import TemplateProcessing
 from transformers import AutoTokenizer
@@ -195,7 +195,18 @@ class Generator:
 
 
 def load_csm_1b(device: str = "cuda") -> Generator:
-    model = Model.from_pretrained("sesame/csm-1b")
+    # Newer huggingface_hub + PyTorchModelHubMixin paths require an explicit
+    # constructor config for this model class.
+    model = Model.from_pretrained(
+        "sesame/csm-1b",
+        config=ModelArgs(
+            backbone_flavor="llama-1B",
+            decoder_flavor="llama-100M",
+            text_vocab_size=128_256,
+            audio_vocab_size=2_048,
+            audio_num_codebooks=32,
+        ),
+    )
     dtype = torch.bfloat16 if device != "cpu" else torch.float32
     model.to(device=device, dtype=dtype)
 

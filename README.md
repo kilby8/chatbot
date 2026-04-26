@@ -42,6 +42,119 @@ huggingface-cli login
 
 The `triton` package cannot be installed in Windows. Instead use `pip install triton-windows`.
 
+## Hugging Face CLI For AI Agents
+
+Use Hugging Face CLI tools to connect coding agents to model search, datasets, Spaces, and jobs.
+
+For complete command details, see the official CLI reference:
+https://huggingface.co/docs/huggingface_hub/guides/cli
+
+### Install or update the CLI (project-safe)
+
+```bash
+pip install -U huggingface_hub==0.28.1
+python -m huggingface_hub.commands.huggingface_cli version
+```
+
+Authenticate your session:
+
+```bash
+python -m huggingface_hub.commands.huggingface_cli login
+```
+
+Token settings:
+https://huggingface.co/settings/tokens
+
+### Add the CLI Skill for agents (requires newer hf CLI)
+
+The `hf skills ...` commands require the newer `hf` CLI, which can conflict with this repo's Python dependencies if installed directly in the same environment.
+Use an isolated environment for those commands.
+
+Helper script in this repo:
+
+```bash
+bash scripts/setup_hf_cli.sh --global
+```
+
+Project-local skills:
+
+```bash
+bash scripts/setup_hf_cli.sh --project
+```
+
+Claude mode:
+
+```bash
+bash scripts/setup_hf_cli.sh --claude --global
+```
+
+Setup only (no skill install):
+
+```bash
+bash scripts/setup_hf_cli.sh --no-skills
+```
+
+Run `hf` without manual activation:
+
+```bash
+bash scripts/hf.sh --help
+bash scripts/hf.sh auth login
+```
+
+The wrapper auto-bootstraps the isolated venv if missing, then forwards all args to `hf`.
+
+Example (separate environment):
+
+```bash
+python -m venv ~/.venvs/hf-cli
+source ~/.venvs/hf-cli/bin/activate
+pip install -U huggingface_hub
+hf --version
+```
+
+Global install (all projects):
+
+```bash
+hf skills add --global
+```
+
+For Claude Code:
+
+```bash
+hf skills add --claude --global
+```
+
+Project-local install:
+
+```bash
+hf skills add
+```
+
+Project-local for Claude Code:
+
+```bash
+hf skills add --claude
+```
+
+Alternative via Claude plugin commands:
+
+```bash
+claude
+/plugin marketplace add huggingface/skills
+/plugin install hf-cli@huggingface/skills
+```
+
+### Useful commands for this repository
+
+```bash
+python -m huggingface_hub.commands.huggingface_cli whoami
+python -m huggingface_hub.commands.huggingface_cli repo --help
+python -m huggingface_hub.commands.huggingface_cli upload --help
+```
+
+Jobs documentation:
+https://huggingface.co/docs/huggingface_hub/guides/cli#hf-jobs
+
 ## Quickstart
 
 This script will generate a conversation between 2 characters, using a prompt for each character.
@@ -49,6 +162,212 @@ This script will generate a conversation between 2 characters, using a prompt fo
 ```bash
 python run_csm.py
 ```
+
+## Move To Ollama (Local)
+
+This repository now includes a local Ollama backend and a website chat UI.
+
+## Run With Docker + Ollama
+
+This is the fastest way to run the chat stack with an LLM.
+
+### 1) Start containers
+
+```bash
+docker compose up -d --build
+```
+
+If you have an NVIDIA GPU and Docker GPU runtime configured:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+```
+
+This starts:
+
+- Ollama runtime at `http://localhost:11434`
+- FastAPI bridge at `http://localhost:8000`
+- Web UI at `http://localhost:8080`
+
+The compose file also defines healthchecks and waits for healthy dependencies (`ollama` -> `api` -> `web`).
+
+### 2) Pull an LLM into Ollama
+
+```bash
+docker compose exec ollama ollama pull llama3.1:8b
+```
+
+You can replace `llama3.1:8b` with any Ollama model name you want.
+
+### 3) Verify model visibility
+
+```bash
+curl http://localhost:8000/models
+```
+
+Optional inference smoke test:
+
+```bash
+curl -X POST http://localhost:8000/chat \
+    -H 'Content-Type: application/json' \
+    -d '{
+        "model": "llama3.2:1b",
+        "messages": [{"role": "user", "content": "Reply with exactly: docker-connected"}],
+        "temperature": 0,
+        "max_tokens": 30
+    }'
+```
+
+### 4) Open the chat UI
+
+Visit `http://localhost:8080` in your browser. The model field will auto-suggest available Ollama models.
+
+### 5) Stop services
+
+```bash
+docker compose down
+```
+
+To also remove downloaded model data:
+
+```bash
+docker compose down -v
+```
+
+### Optional Makefile shortcuts
+
+```bash
+make up
+make up-gpu
+make pull-model MODEL=llama3.2:1b
+make ps
+make chat-health
+make models
+make smoke
+make down
+```
+
+Use a specific model for smoke test:
+
+```bash
+make smoke MODEL=llama3.2:1b
+```
+
+### Included files
+
+- `ollama_api.py` (FastAPI proxy to your local Ollama runtime)
+- `Dockerfile.ollama-api` (container image for the API bridge)
+- `docker-compose.yml` (Ollama + API + Web stack)
+- `website/index.html`
+- `website/styles.css`
+- `website/app.js`
+
+### 1) Install and start Ollama
+
+On your machine, install Ollama and run:
+
+```bash
+ollama serve
+```
+
+In a second terminal, pull a model (example):
+
+```bash
+ollama pull llama3.1:8b
+```
+
+### 2) Start the local API bridge
+
+```bash
+pip install -r requirements.txt
+export CORS_ALLOW_ORIGINS=http://localhost:8080
+export OLLAMA_BASE_URL=http://127.0.0.1:11434
+uvicorn ollama_api:app --host 0.0.0.0 --port 8000
+```
+
+Endpoints:
+
+- `GET /health`
+- `GET /models`
+- `POST /chat`
+
+Optional request guardrails for `POST /chat` (env vars):
+
+- `CHAT_MAX_MESSAGES` (default `100`)
+- `CHAT_MAX_MESSAGE_CHARS` (default `8000`)
+- `CHAT_MAX_TOTAL_CHARS` (default `50000`)
+
+Optional API auth (recommended beyond localhost):
+
+- `API_AUTH_TOKEN` (if set, clients must send `X-API-Key: <token>`)
+
+### 3) Serve the website
+
+```bash
+cd website
+python3 -m http.server 8080
+```
+
+Open: `http://localhost:8080`
+
+The page automatically calls `GET /models` and suggests available local models in the **Model** input.
+It also shows API/model status badges and lets you tune per-request timeout and retry count from the form.
+If auth is enabled, set the API key in the **API Key** field so requests include `X-API-Key`.
+
+### 4) Optional CLI chat client
+
+You can also chat from the terminal:
+
+```bash
+python chat.py --api http://127.0.0.1:8000 --model llama3.1:8b
+```
+
+Useful reliability flags:
+
+```bash
+python chat.py --timeout 120 --retries 2
+```
+
+If auth is enabled:
+
+```bash
+python chat.py --api-key "$API_AUTH_TOKEN"
+```
+
+or via environment variable:
+
+```bash
+export API_AUTH_TOKEN=your-token-here
+python chat.py
+```
+
+One-shot mode:
+
+```bash
+python chat.py --oneshot "Write a one-sentence greeting."
+```
+
+### 5) Chat request schema
+
+```json
+{
+  "model": "llama3.1:8b",
+  "messages": [
+    { "role": "system", "content": "You are a concise and helpful assistant." },
+    { "role": "user", "content": "Write a short welcome message." }
+  ],
+  "temperature": 0.7,
+  "max_tokens": 512
+}
+```
+
+The website calls `http://localhost:8000/chat` by default and keeps conversation context in-browser.
+
+If you set `API_AUTH_TOKEN`, configure your client to include `X-API-Key` on requests.
+
+## Legacy CSM API (Optional)
+
+The previous CSM audio-generation API remains available in `web_api.py` if you still want text-to-speech with enough GPU memory.
 
 ## Usage
 
